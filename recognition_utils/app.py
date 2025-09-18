@@ -149,8 +149,8 @@ def run_recognition(target_gesture = 'five'):
                 else:
                     # Define the codec and create VideoWriter object
                     save_path = producer_val[0]
-                    resultTxt = str(Path(save_path + "_recognize_dynamic").with_suffix('.txt')) 
-                    save_path = str(Path(save_path + "_recognize").with_suffix('.mp4'))  # force *.mp4 suffix on results videos
+                    #resultTxt = str(Path(save_path + "_recognize_dynamic").with_suffix('.txt')) 
+                    #save_path = str(Path(save_path + "_recognize").with_suffix('.mp4'))  # force *.mp4 suffix on results videos
                     print("Save Recognition Result to " + save_path)
                     out = cv.VideoWriter(save_path,cv.VideoWriter_fourcc(*'mp4v'), 30.0, producer_val[1])
             producer_val = get_value()

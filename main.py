@@ -16,6 +16,8 @@ import os
 import sys
 from pathlib import Path
 from threading import Thread
+import shutil
+import glob
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -89,6 +91,107 @@ def parse_opt():
     return solution_type, opt
 
 
+def cleanup_and_copy_videos(project_base_dir):
+    """
+    Clean up video files in project subdirectories and copy them to project base directory.
+    
+    Args:
+        project_base_dir (str or Path): Base project directory (e.g., runs/predict-seg)
+                                       to scan subdirectories and copy files to
+    """
+    project_base_path = Path(project_base_dir)
+    
+    # Ensure project base directory exists
+    if not project_base_path.exists():
+        print(f"Error: Project directory '{project_base_path}' does not exist")
+        return
+    
+    print(f"\n{'='*50}")
+    print("VIDEO CLEANUP AND COPY OPERATION")
+    print(f"{'='*50}")
+    print(f"Scanning project directory: {project_base_path}")
+    print(f"Will copy files to: {project_base_path}")
+    
+    # Find all .mp4 files in project subdirectories (not in the base directory itself)
+    mp4_files = []
+    for subdir in project_base_path.iterdir():
+        if subdir.is_dir():
+            subdir_mp4s = list(subdir.glob('**/*.mp4'))
+            mp4_files.extend(subdir_mp4s)
+            if subdir_mp4s:
+                print(f"Found {len(subdir_mp4s)} .mp4 files in {subdir.name}/")
+    
+    if not mp4_files:
+        print("No .mp4 files found in project subdirectories")
+        return
+    
+    print(f"Total found: {len(mp4_files)} .mp4 files")
+    
+    files_to_delete = []
+    files_to_keep = []
+    
+    # Separate files based on '_trace' suffix
+    for mp4_file in mp4_files:
+        filename = mp4_file.stem  # filename without extension
+        if '_trace' in filename:
+            files_to_keep.append(mp4_file)
+            print(f"✓ Keeping: {mp4_file.name}")
+        else:
+            files_to_delete.append(mp4_file)
+            print(f"✗ Marked for deletion: {mp4_file.name}")
+    
+    # Delete files without '_trace'
+    deleted_count = 0
+    print(f"\nDeleting {len(files_to_delete)} files...")
+    for file_to_delete in files_to_delete:
+        try:
+            file_to_delete.unlink()
+            print(f"Deleted: {file_to_delete}")
+            deleted_count += 1
+        except Exception as e:
+            print(f"Error deleting {file_to_delete}: {e}")
+    
+    print(f"Successfully deleted {deleted_count} files")
+    
+    # Copy remaining .mp4 files to project base directory
+    # Re-scan for remaining .mp4 files after deletion
+    remaining_mp4_files = []
+    for subdir in project_base_path.iterdir():
+        if subdir.is_dir():
+            remaining_mp4_files.extend(list(subdir.glob('**/*.mp4')))
+    
+    copied_count = 0
+    
+    print(f"\nCopying {len(remaining_mp4_files)} files to project base directory...")
+    for mp4_file in remaining_mp4_files:
+        try:
+            destination = project_base_path / mp4_file.name
+            
+            # If file already exists in destination, create unique name
+            if destination.exists():
+                counter = 1
+                stem = mp4_file.stem
+                suffix = mp4_file.suffix
+                while destination.exists():
+                    new_name = f"{stem}_{counter}{suffix}"
+                    destination = project_base_path / new_name
+                    counter += 1
+                print(f"File exists, renamed to: {destination.name}")
+            
+            shutil.copy2(mp4_file, destination)
+            print(f"Copied: {mp4_file.name} -> {destination}")
+            copied_count += 1
+            
+        except Exception as e:
+            print(f"Error copying {mp4_file}: {e}")
+    
+    print(f"\n{'='*50}")
+    print(f"OPERATION COMPLETED!")
+    print(f"Deleted: {deleted_count} files")
+    print(f"Copied: {copied_count} files to project base directory")
+    print(f"{'='*50}")
+
+
 def main(solution_type, opt):
     init(solution_type)
     gesture = str(solution_type.target_gesture)
@@ -110,8 +213,21 @@ def main(solution_type, opt):
     if not solution_type.norecognition:
         t1.join()
     t2.join()
+    
+    # After execution is complete, cleanup and copy videos
+    print("\nExecution completed. Starting video cleanup...")
+    
+    # Use the project base directory (not project/name)
+    if solution_type.baseline:
+        project_base_dir = opt.save_dir
+    else:
+        # For YOLO, use just the project directory, not project/name
+        project_base_dir = opt.project
+    
+    # Perform cleanup and copy operation
+    cleanup_and_copy_videos(project_base_dir)
+
 
 if __name__ == "__main__":
     solution_type, opt = parse_opt()
     main(solution_type, opt)
-        

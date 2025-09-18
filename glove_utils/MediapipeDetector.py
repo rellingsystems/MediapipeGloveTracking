@@ -57,7 +57,7 @@ class HandDetector():
                     # #self.plot_landmarks(handLms, self.mpHands.HAND_CONNECTIONS, 
                     #                           landmark_drawing_spec=drawing_spec_lm, 
                     #                        connection_drawing_spec=drawing_spec_bone)
-                    print("hai")
+                    print("saving frame")
 
         return success
     
