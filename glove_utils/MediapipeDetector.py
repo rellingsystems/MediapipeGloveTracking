@@ -51,10 +51,10 @@ class HandDetector():
             success = True
             for handLms in self.results.multi_hand_landmarks:
                 if draw:
-                    self.mpDraw.draw_landmarks(drawOn, handLms, self.mpHands.HAND_CONNECTIONS, 
-                                               landmark_drawing_spec=drawing_spec_lm, 
-                                            connection_drawing_spec=drawing_spec_bone)
-                    #self.plot_landmarks(handLms, self.mpHands.HAND_CONNECTIONS, 
+                    # self.mpDraw.draw_landmarks(drawOn, handLms, self.mpHands.HAND_CONNECTIONS, 
+                    #                            landmark_drawing_spec=drawing_spec_lm, 
+                    #                         connection_drawing_spec=drawing_spec_bone)
+                    # #self.plot_landmarks(handLms, self.mpHands.HAND_CONNECTIONS, 
                     #                           landmark_drawing_spec=drawing_spec_lm, 
                     #                        connection_drawing_spec=drawing_spec_bone)
 
@@ -63,8 +63,8 @@ class HandDetector():
     def plot_landmarks(self, landmark_list, connections, landmark_drawing_spec,
                    connection_drawing_spec, elevation: int = 10, azimuth: int = 20):
         matplotlib.use('Agg')
-        _PRESENCE_THRESHOLD = 0.5
-        _VISIBILITY_THRESHOLD = 0.5
+        _PRESENCE_THRESHOLD = 0.3
+        _VISIBILITY_THRESHOLD = 0.3
         def _normalize_color(color):
             return tuple(v / 255. for v in color)
 
