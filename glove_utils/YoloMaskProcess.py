@@ -49,6 +49,9 @@ def process_img(img, mask, imgsz):
     
     # 140 < a,b < 155
     img = img.astype(np.float64)
+    #backup when can use that 
+    # if img[slices, 0].size == 0:
+    # return # Or you can return the original image: return img_ori
     min_val = (np.min(img[slices, 0]), np.min(img[slices, 1]),  np.min(img[slices, 2]))
     max_val = (np.max(img[slices, 0]), np.max(img[slices, 1]),  np.max(img[slices, 2]))
     img[slices, 1] -= min_val[1]
