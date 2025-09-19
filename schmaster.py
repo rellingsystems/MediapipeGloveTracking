@@ -529,5 +529,168 @@ def post_process_cleanup(output_dir, video_file_name, skip_existing=True):
         logger.info(f"Average time per file: {total_time/len(video_files):.1f} seconds")
     logger.info(f"{'='*60}")
 
+def main():
+    parser = argparse.ArgumentParser(description='Batch process videos with memory leak prevention')
+    parser.add_argument('--input_dir', required=True, help='Directory containing input videos')
+    parser.add_argument('--output_dir', required=True, help='Directory for output results')
+    parser.add_argument('--script_path', default='main.py', help='Path to your main processing script')
+    parser.add_argument('--weights', required=True, help='Path to model weights file')
+    parser.add_argument('--baseline', action='store_true', help='Use baseline processing')
+    parser.add_argument('--norecognition', action='store_true', help='Disable recognition module')
+    parser.add_argument('--kalmanfilter', action='store_true', help='Enable kalman filter')
+    parser.add_argument('--target_gesture', default='five', help='Target gesture for recognition')
+    parser.add_argument('--color-shift', action='store_true', help='Enable color shift preprocessing')
+    parser.add_argument('--conf-thres', type=float, default=0.30, help='Confidence threshold')
+    parser.add_argument('--timeout', type=int, default=3600, help='Timeout per file in seconds')
+    parser.add_argument('--max_memory_gb', type=float, default=8.0, help='Maximum memory per process (GB)')
+    parser.add_argument('--extensions', nargs='+', default=['.mp4', '.avi'], help='Video file extensions to process')
+    parser.add_argument('--resume', action='store_true', help='Resume from last processed file')
+    parser.add_argument('--show-output', action='store_true', default=True, help='Show real-time output from main.py processes')
+    parser.add_argument('--quiet', action='store_true', help='Suppress real-time output from main.py processes')
+    parser.add_argument('--realtime', action='store_true', help='Show main.py output in real-time (may be less stable)')
+    parser.add_argument('--max_workers', type=int, default=2, help='Maximum number of concurrent processes')
+    
+    args = parser.parse_args()
+    
+    # Setup paths
+    input_dir = Path(args.input_dir)
+    output_dir = Path(args.output_dir)
+    script_path = Path(args.script_path)
+    
+    # Validate inputs
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Input directory not found: {input_dir}")
+    if not script_path.exists():
+        raise FileNotFoundError(f"Script not found: {script_path}")
+    if not Path(args.weights).exists():
+        raise FileNotFoundError(f"Weights file not found: {args.weights}")
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Setup logging
+    setup_logging(output_dir)
+    
+    # Get video files
+    video_files = get_video_files(input_dir, args.extensions)
+    logger.info(f"Found {len(video_files)} video files to process")
+    logger.info(f"Using {args.max_workers} concurrent workers")
+    
+    if not video_files:
+        logger.warning("No video files found!")
+        return
+    
+    # Build base arguments for the processing script
+    base_args = ['--weights', str(args.weights)]
+    base_args.extend(['--conf-thres', str(args.conf_thres)])
+    
+    if args.baseline:
+        base_args.append('--baseline')
+    if args.norecognition:
+        base_args.append('--norecognition')
+    if args.kalmanfilter:
+        base_args.append('--kalmanfilter')
+    if args.color_shift:
+        base_args.append('--color-shift')
+    
+    base_args.extend(['--target_gesture', args.target_gesture])
+    
+    # Resume functionality
+    processed_files_log = output_dir / 'processed_files.txt'
+    processed_files = set()
+    if args.resume and processed_files_log.exists():
+        with open(processed_files_log, 'r') as f:
+            processed_files = set(line.strip() for line in f)
+        logger.info(f"Resuming: {len(processed_files)} files already processed")
+    
+    # Filter out already processed files
+    if args.resume:
+        video_files = [f for f in video_files if str(f) not in processed_files]
+        logger.info(f"Remaining files to process: {len(video_files)}")
+    
+    # Process files with concurrent workers
+    successful = 0
+    failed = 0
+    start_time = time.time()
+    completed_count = len(processed_files) if args.resume else 0
+    total_files = len(get_video_files(input_dir, args.extensions))
+    
+    logger.info(f"Starting batch processing with {args.max_workers} workers...")
+    
+    # Use ProcessPoolExecutor for concurrent processing
+    with ProcessPoolExecutor(max_workers=args.max_workers) as executor:
+        # Submit all jobs
+        future_to_video = {}
+        show_output = args.show_output and not args.quiet
+        
+        for video_file in video_files:
+            future = executor.submit(
+                process_single_file, 
+                video_file, 
+                script_path, 
+                base_args, 
+                output_dir, 
+                args.timeout,
+                args.max_memory_gb,
+                show_output,
+                args.realtime  # Add realtime parameter
+            )
+            future_to_video[future] = video_file
+            logger.info(f"📝 Queued: {video_file.name}")
+        
+        # Process completed jobs as they finish
+        for future in as_completed(future_to_video):
+            try:
+                video_file, success, message = future.result(timeout=args.timeout + 60)
+                completed_count += 1
+                
+                if success:
+                    successful += 1
+                    # Log successful processing
+                    with open(processed_files_log, 'a') as f:
+                        f.write(f"{video_file}\n")
+                    logger.info(f"✅ SUCCESS: {video_file.name} - {message}")
+                else:
+                    failed += 1
+                    logger.error(f"❌ FAILED: {video_file.name} - {message}")
+                
+                # Progress update
+                elapsed = time.time() - start_time
+                remaining = total_files - completed_count
+                active_workers = len([f for f in future_to_video if not f.done()])
+                
+                if completed_count > 0:
+                    avg_time = elapsed / (completed_count - (len(processed_files) if args.resume else 0))
+                    eta = remaining * avg_time if remaining > 0 else 0
+                    
+                    logger.info(f"📊 Progress: {completed_count}/{total_files} | "
+                               f"✅ Success: {successful} | ❌ Failed: {failed} | "
+                               f"⏱️  ETA: {eta/60:.1f}min | "
+                               f"🔄 Active: {active_workers}")
+                
+                # Small delay between job completions for system stability
+                time.sleep(0.1)
+                
+            except Exception as e:
+                video_file = future_to_video.get(future, "unknown")
+                failed += 1
+                completed_count += 1
+                logger.error(f"💥 EXCEPTION: {video_file} - {str(e)}")
+    
+    logger.info("🏁 All workers completed, finalizing...")
+    time.sleep(2)  # Allow final cleanup
+    
+    # Final summary
+    total_time = time.time() - start_time
+    logger.info(f"\n{'='*60}")
+    logger.info(f"BATCH PROCESSING COMPLETED!")
+    logger.info(f"Total files: {total_files}")
+    logger.info(f"Processed this run: {len(video_files)}")
+    logger.info(f"Successful: {successful}")
+    logger.info(f"Failed: {failed}")
+    logger.info(f"Total time: {total_time/60:.1f} minutes")
+    if len(video_files) > 0:
+        logger.info(f"Average time per file: {total_time/len(video_files):.1f} seconds")
+    logger.info(f"{'='*60}")
+
 if __name__ == "__main__":
     main()
