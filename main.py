@@ -161,22 +161,18 @@ def cleanup_and_copy_videos(project_base_dir):
             remaining_mp4_files.extend(list(subdir.glob('**/*.mp4')))
     
     copied_count = 0
+    skipped_count = 0
     
     print(f"\nCopying {len(remaining_mp4_files)} files to project base directory...")
     for mp4_file in remaining_mp4_files:
         try:
             destination = project_base_path / mp4_file.name
             
-            # If file already exists in destination, create unique name
+            # Skip if file already exists in destination
             if destination.exists():
-                counter = 1
-                stem = mp4_file.stem
-                suffix = mp4_file.suffix
-                while destination.exists():
-                    new_name = f"{stem}_{counter}{suffix}"
-                    destination = project_base_path / new_name
-                    counter += 1
-                print(f"File exists, renamed to: {destination.name}")
+                print(f"⏭️  Skipping existing file: {mp4_file.name}")
+                skipped_count += 1
+                continue
             
             shutil.copy2(mp4_file, destination)
             print(f"Copied: {mp4_file.name} -> {destination}")
@@ -189,8 +185,8 @@ def cleanup_and_copy_videos(project_base_dir):
     print(f"OPERATION COMPLETED!")
     print(f"Deleted: {deleted_count} files")
     print(f"Copied: {copied_count} files to project base directory")
+    print(f"Skipped existing: {skipped_count} files")
     print(f"{'='*50}")
-
 
 def main(solution_type, opt):
     init(solution_type)
